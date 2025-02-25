@@ -132,3 +132,70 @@
     ;; Check if the node hash is valid by ensuring it is not zero
     (not (is-eq hash ZERO-VALUE))
 )
+
+(define-private (get-merkle-node (level uint) (index uint))
+    ;; Retrieve the Merkle node hash at a specific level and index, default to ZERO-VALUE if not found
+    (default-to 
+        ZERO-VALUE
+        (get node-hash (map-get? merkle-nodes { level: level, index: index })))
+)
+
+(define-private (set-merkle-node (level uint) (index uint) (hash (buff 32)))
+    ;; Set the Merkle node hash at a specific level and index
+    (map-set merkle-nodes
+        { level: level, index: index }
+        { node-hash: hash })
+)
+
+;; Merkle Tree Update Logic
+(define-private (update-merkle-parent (level uint) (index uint))
+    ;; Update the parent node in the Merkle tree by combining the current node and its sibling
+    (let (
+        (parent-index (/ index u2))
+        (is-right-child (is-eq (mod index u2) u1))
+        (sibling-index (if is-right-child (- index u1) (+ index u1)))
+        (current-node (get-merkle-node level index))
+        (sibling-node (get-merkle-node level sibling-index))
+    )
+        (set-merkle-node 
+            (+ level u1) 
+            parent-index 
+            (if is-right-child
+                (combine-hashes sibling-node current-node)
+                (combine-hashes current-node sibling-node)))
+    )
+)
+
+;; Verification Helpers
+(define-private (verify-proof-step
+    (proof-element (buff 32))
+    (state { current-hash: (buff 32), is-valid: bool }))
+    ;; Verify a single step in the Merkle proof by combining the current hash with the proof element
+    (let (
+        (current-hash (get current-hash state))
+        (combined-hash (combine-hashes current-hash proof-element))
+    )
+        {
+            current-hash: combined-hash,
+            is-valid: (and 
+                (get is-valid state) 
+                (is-valid-node-hash? combined-hash))
+        }
+    )
+)
+
+(define-private (verify-merkle-proof 
+    (leaf-hash (buff 32))
+    (proof (list 20 (buff 32)))
+    (root (buff 32)))
+    ;; Verify the Merkle proof by folding over the proof elements and checking the final hash against the root
+    (let (
+        (proof-result (fold verify-proof-step
+            proof
+            { current-hash: leaf-hash, is-valid: true }))
+    )
+        (if (get is-valid proof-result)
+            (ok true)
+            (err ERR-INVALID-PROOF))
+    )
+)
