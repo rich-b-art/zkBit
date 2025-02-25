@@ -256,3 +256,73 @@
     )
 )
 
+;; Public Withdrawal Function
+(define-public (process-withdrawal
+    (nullifier (buff 32))
+    (root (buff 32))
+    (proof (list 20 (buff 32)))
+    (recipient principal)
+    (token <ft-trait>)
+    (amount uint))
+    ;; Process a withdrawal from the privacy pool, verifying the Merkle proof and transferring tokens
+    (begin
+        ;; Validate inputs
+        (asserts! (is-valid-token token) (err ERR-INVALID-INPUT))
+        (asserts! (is-valid-nullifier nullifier) (err ERR-INVALID-INPUT))
+        (asserts! (is-valid-proof proof) (err ERR-INVALID-INPUT))
+        
+        ;; Check contract is not paused
+        (asserts! (not (var-get contract-paused)) (err ERR-NOT-AUTHORIZED))
+        
+        ;; Validate withdrawal amount
+        (asserts! (> amount u0) (err ERR-INVALID-AMOUNT))
+        (asserts! (<= amount MAX-DEPOSIT-AMOUNT) (err ERR-INVALID-AMOUNT))
+        
+        ;; Check nullifier status
+        (asserts! (is-none (map-get? nullifier-status { nullifier: nullifier })) 
+            (err ERR-NULLIFIER-EXISTS))
+        
+        ;; Verify merkle proof
+        (try! (verify-merkle-proof nullifier proof root))
+        
+        ;; Mark nullifier as used and record withdrawal
+        (map-set nullifier-status 
+            { nullifier: nullifier } 
+            { 
+                used: true, 
+                withdrawn-amount: amount,
+                withdrawn-at: block-height 
+            })
+        
+        ;; Transfer tokens with error handling
+        (match (as-contract (contract-call? token transfer amount tx-sender recipient none))
+            success (ok true)
+            error (err ERR-TRANSFER-FAILED)
+        )
+    )
+)
+
+;; Admin Recovery Function
+(define-public (admin-recovery 
+    (token <ft-trait>)
+    (recipient principal)
+    (amount uint))
+    ;; Allow the contract owner to recover tokens in case of emergency
+    (begin
+        ;; Validate inputs
+        (asserts! (is-valid-token token) (err ERR-INVALID-INPUT))
+        
+        ;; Only contract owner can recover
+        (asserts! (is-contract-owner tx-sender) (err ERR-NOT-AUTHORIZED))
+        
+        ;; Validate recovery amount
+        (asserts! (> amount u0) (err ERR-INVALID-AMOUNT))
+        
+        ;; Transfer tokens with error handling
+        (match (as-contract (contract-call? token transfer amount tx-sender recipient none))
+            success (ok true)
+            error (err ERR-TRANSFER-FAILED)
+        )
+    )
+)
+
