@@ -199,3 +199,60 @@
             (err ERR-INVALID-PROOF))
     )
 )
+
+;; Public Deposit Function
+(define-public (make-deposit 
+    (commitment (buff 32))
+    (amount uint)
+    (token <ft-trait>))
+    ;; Make a deposit into the privacy pool, updating the Merkle tree and recording the deposit details
+    (begin
+        ;; Validate inputs
+        (asserts! (is-valid-token token) (err ERR-INVALID-INPUT))
+        (asserts! (is-valid-commitment commitment) (err ERR-INVALID-COMMITMENT))
+        
+        ;; Check contract is not paused
+        (asserts! (not (var-get contract-paused)) (err ERR-NOT-AUTHORIZED))
+        
+        ;; Input validation
+        (asserts! (> amount u0) (err ERR-INVALID-AMOUNT))
+        (asserts! (<= amount MAX-DEPOSIT-AMOUNT) (err ERR-INVALID-AMOUNT))
+        
+        ;; Check merkle tree capacity
+        (let ((leaf-index (var-get next-leaf-index)))
+            (asserts! (< leaf-index (pow u2 MERKLE-TREE-HEIGHT)) (err ERR-TREE-FULL))
+            
+            ;; Token transfer with additional error handling
+            (match (contract-call? token transfer amount tx-sender (as-contract tx-sender) none)
+                success (begin
+                    ;; Merkle tree update
+                    (set-merkle-node u0 leaf-index commitment)
+                    
+                    ;; Update multiple merkle tree levels
+                    (update-merkle-parent u0 leaf-index)
+                    (update-merkle-parent u1 (/ leaf-index u2))
+                    (update-merkle-parent u2 (/ leaf-index u4))
+                    (update-merkle-parent u3 (/ leaf-index u8))
+                    (update-merkle-parent u4 (/ leaf-index u16))
+                    (update-merkle-parent u5 (/ leaf-index u32))
+                    
+                    ;; Record deposit details
+                    (map-set deposit-records 
+                        { commitment: commitment }
+                        {
+                            leaf-index: leaf-index,
+                            block-height: block-height,
+                            depositor: tx-sender,
+                            amount: amount
+                        })
+                    
+                    ;; Update global state
+                    (var-set next-leaf-index (+ leaf-index u1))
+                    (var-set total-deposited (+ (var-get total-deposited) amount))
+                    
+                    (ok leaf-index))
+                error (err ERR-TRANSFER-FAILED))
+        )
+    )
+)
+
