@@ -56,7 +56,7 @@
     { commitment: (buff 32) } 
     { 
         leaf-index: uint, 
-        block-height: uint,
+        stacks-block-height: uint,
         depositor: principal,
         amount: uint 
     }
@@ -241,7 +241,7 @@
                         { commitment: commitment }
                         {
                             leaf-index: leaf-index,
-                            block-height: block-height,
+                            stacks-block-height: stacks-block-height,
                             depositor: tx-sender,
                             amount: amount
                         })
@@ -291,7 +291,7 @@
             { 
                 used: true, 
                 withdrawn-amount: amount,
-                withdrawn-at: block-height 
+                withdrawn-at: stacks-block-height 
             })
         
         ;; Transfer tokens with error handling
@@ -326,3 +326,36 @@
     )
 )
 
+;; Read-only Functions
+(define-read-only (get-contract-status)
+    ;; Get the current status of the contract including paused state, total deposited, and next leaf index
+    (ok {
+        paused: (var-get contract-paused),
+        total-deposited: (var-get total-deposited),
+        next-leaf-index: (var-get next-leaf-index)
+    })
+)
+
+(define-read-only (get-current-root)
+    ;; Get the current Merkle root
+    (ok (var-get merkle-root))
+)
+
+(define-read-only (check-nullifier-status (nullifier (buff 32)))
+    ;; Check the status of a nullifier
+    (map-get? nullifier-status { nullifier: nullifier })
+)
+
+(define-read-only (get-deposit-details (commitment (buff 32)))
+    ;; Get the details of a deposit by its commitment
+    (map-get? deposit-records { commitment: commitment })
+)
+
+;; Contract Initialization
+(begin
+    ;; Initialize contract state variables
+    (var-set merkle-root ZERO-VALUE)
+    (var-set next-leaf-index u0)
+    (var-set contract-paused false)
+    (var-set total-deposited u0)
+)
