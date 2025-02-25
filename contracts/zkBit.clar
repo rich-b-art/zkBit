@@ -61,3 +61,74 @@
         amount: uint 
     }
 )
+
+(define-map nullifier-status 
+    { nullifier: (buff 32) } 
+    { 
+        used: bool, 
+        withdrawn-amount: uint,
+        withdrawn-at: uint 
+    }
+)
+
+(define-map merkle-nodes 
+    { level: uint, index: uint } 
+    { node-hash: (buff 32) }
+)
+
+;; Input Validation Helpers
+(define-private (is-valid-token (token <ft-trait>))
+    ;; Check if the token is valid by ensuring it conforms to the ft-trait
+    (is-some (some token))
+)
+
+(define-private (is-valid-commitment (commitment (buff 32)))
+    ;; Validate the commitment by checking it is not zero and its length is less than 33 bytes
+    (and 
+        (not (is-eq commitment ZERO-VALUE))
+        (< (len commitment) u33)
+    )
+)
+
+(define-private (is-valid-nullifier (nullifier (buff 32)))
+    ;; Validate the nullifier by checking it is not zero and its length is less than 33 bytes
+    (and 
+        (not (is-eq nullifier ZERO-VALUE))
+        (< (len nullifier) u33)
+    )
+)
+
+(define-private (is-valid-proof (proof (list 20 (buff 32))))
+    ;; Validate the proof by checking its length is greater than 0 and less than or equal to 20
+    (and 
+        (> (len proof) u0)
+        (<= (len proof) u20)
+    )
+)
+
+;; Authorization Check
+(define-private (is-contract-owner (sender principal))
+    ;; Check if the sender is the contract owner
+    (is-eq sender CONTRACT-OWNER)
+)
+
+;; Pause Control
+(define-public (toggle-contract-pause)
+    ;; Toggle the contract's paused state, only the contract owner can perform this action
+    (begin
+        (asserts! (is-contract-owner tx-sender) (err ERR-NOT-AUTHORIZED))
+        (var-set contract-paused (not (var-get contract-paused)))
+        (ok (var-get contract-paused))
+    )
+)
+
+;; Internal Helper Functions
+(define-private (combine-hashes (left (buff 32)) (right (buff 32)))
+    ;; Combine two hashes using SHA-256
+    (sha256 (concat left right))
+)
+
+(define-private (is-valid-node-hash? (hash (buff 32)))
+    ;; Check if the node hash is valid by ensuring it is not zero
+    (not (is-eq hash ZERO-VALUE))
+)
